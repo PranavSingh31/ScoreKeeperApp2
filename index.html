@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Score Keeper</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    .controls {
+      margin-bottom: 20px;
+    }
+    .score-buttons label {
+      margin-right: 10px;
+      cursor: pointer;
+    }
+    .grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .team-header {
+      font-weight: bold;
+      text-align: center;
+      padding: 10px;
+      background: #f0f0f0;
+      border: 1px solid #ccc;
+    }
+    .team-cell {
+      text-align: center;
+      padding: 10px;
+      border: 1px solid #ccc;
+      cursor: pointer;
+    }
+    .actions {
+      margin-top: 10px;
+    }
+    .actions button {
+      margin-right: 10px;
+    }
+    .totals {
+      font-weight: bold;
+      background: #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <label>Enter number of teams: <input type="number" id="teamCount" min="1" /></label>
+    <button onclick="initializeGrid()">Start</button>
+    <button onclick="manualNewRow()">+ New Question</button>
+  </div>
+
+  <div class="score-buttons">
+    Score:
+    <label><input type="radio" name="score" value="10">10</label>
+    <label><input type="radio" name="score" value="20" checked>20</label>
+    <label><input type="radio" name="score" value="30">30</label>
+    <label><input type="radio" name="score" value="40">40</label>
+  </div>
+
+  <div class="grid" id="scoreGrid"></div>
+
+  <div class="actions">
+    <button onclick="undo()">Undo</button>
+    <button onclick="redo()">Redo</button>
+  </div>
+
+  <script>
+    let teamCount = 0;
+    let currentQuestionRow = null;
+    let history = [];
+    let redoStack = [];
+    let rows = [];
+    let totalRow = null;
+
+    function initializeGrid() {
+      teamCount = parseInt(document.getElementById('teamCount').value);
+      if (isNaN(teamCount) || teamCount <= 0) {
+        alert('Please enter a valid number of teams.');
+        return;
+      }
+
+      const grid = document.getElementById('scoreGrid');
+      grid.innerHTML = '';
+      grid.style.gridTemplateColumns = `repeat(${teamCount}, 1fr)`;
+
+      for (let i = 0; i < teamCount; i++) {
+        const header = document.createElement('div');
+        header.contentEditable = true;
+        header.className = 'team-header';
+        header.innerText = `Team ${i + 1}`;
+        grid.appendChild(header);
+      }
+
+      history = [];
+      redoStack = [];
+      rows = [];
+      currentQuestionRow = null;
+      addNewRow();
+      addTotalRow();
+      updateTotals();
+    }
+
+    function getSelectedScore() {
+      return parseInt(document.querySelector('input[name="score"]:checked').value);
+    }
+
+    function addNewRow() {
+      currentQuestionRow = [];
+      for (let i = 0; i < teamCount; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'team-cell';
+        cell.dataset.teamIndex = i;
+        cell.innerText = '';
+        cell.onclick = () => handleTeamClick(cell);
+        currentQuestionRow.push(cell);
+        document.getElementById('scoreGrid').appendChild(cell);
+      }
+      rows.push(currentQuestionRow);
+    }
+
+    function manualNewRow() {
+      if (currentQuestionRow && currentQuestionRow.some(c => c.innerText === '')) return;
+      addNewRow();
+      moveTotalRowToBottom();
+      updateTotals();
+    }
+
+    function handleTeamClick(cell) {
+      const score = getSelectedScore();
+      const prevScore = cell.innerText === '' ? null : parseInt(cell.innerText);
+
+      if (prevScore === null) {
+        cell.innerText = score;
+        history.push({ row: currentQuestionRow, cell, previous: '', newScore: score });
+      } else if (prevScore === score) {
+        addNewRow();
+        moveTotalRowToBottom();
+        const newCell = currentQuestionRow[parseInt(cell.dataset.teamIndex)];
+        newCell.innerText = score;
+        history.push({ row: currentQuestionRow, cell: newCell, previous: '', newScore: score });
+      } else {
+        cell.innerText = score;
+        history.push({ row: currentQuestionRow, cell, previous: prevScore, newScore: score });
+      }
+
+      redoStack = [];
+      updateTotals();
+    }
+
+    function updateTotals() {
+      if (!totalRow) return;
+
+      const totals = new Array(teamCount).fill(0);
+      for (const row of rows) {
+        row.forEach((cell, index) => {
+          const val = parseInt(cell.innerText);
+          if (!isNaN(val)) totals[index] += val;
+        });
+      }
+
+      for (let i = 0; i < teamCount; i++) {
+        totalRow.children[i].innerText = totals[i];
+      }
+    }
+
+    function addTotalRow() {
+      const grid = document.getElementById('scoreGrid');
+      totalRow = document.createElement('div');
+      totalRow.className = 'totals';
+      totalRow.id = 'totalsRow';
+      totalRow.style.gridColumn = `span ${teamCount}`;
+      totalRow.style.display = 'contents';
+
+      for (let i = 0; i < teamCount; i++) {
+        const totalCell = document.createElement('div');
+        totalCell.className = 'team-cell totals';
+        totalCell.innerText = '0';
+        totalRow.appendChild(totalCell);
+      }
+
+      grid.appendChild(totalRow);
+    }
+
+    function moveTotalRowToBottom() {
+      const grid = document.getElementById('scoreGrid');
+      if (totalRow) grid.appendChild(totalRow);
+    }
+
+    function undo() {
+      if (history.length === 0) return;
+      const last = history.pop();
+      last.cell.innerText = last.previous;
+      redoStack.push(last);
+      updateTotals();
+    }
+
+    function redo() {
+      if (redoStack.length === 0) return;
+      const next = redoStack.pop();
+      next.cell.innerText = next.newScore;
+      history.push(next);
+      updateTotals();
+    }
+  </script>
+</body>
+</html>
